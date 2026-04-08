@@ -7,16 +7,16 @@ import InsightSummary from '@/components/dashboard/InsightSummary';
 import TopicPerformance from '@/components/dashboard/TopicPerformance';
 import FormatPerformance from '@/components/dashboard/FormatPerformance';
 import ContentList from '@/components/dashboard/ContentList';
-import { contentData } from '@/data/content-data';
-import { seasonMap } from '@/data/season-map';
+import { useDataLoad } from '@/hooks/useDataLoad';
 import { 
   getPreviousMonthContents,
   getTopContents,
   getLowContents
 } from '@/lib/analytics';
-import { getNextMonthRecommendations } from '@/lib/planner';
+import { getRecommendationsForMonth, getNextMonthNumber } from '@/lib/planner';
 
 export default function Dashboard() {
+  const { contentData, seasonMap, isLoading } = useDataLoad();
   const [period, setPeriod] = useState<"이번 달" | "최근 30일" | "최근 90일">("이번 달");
 
   const filteredData = useMemo(() => {
@@ -32,18 +32,20 @@ export default function Dashboard() {
       if (period === "최근 90일") return diffDays >= 0 && diffDays <= 90;
       return true;
     });
-  }, [period]);
+  }, [period, contentData]);
 
   const prevPeriodData = useMemo(() => {
     // Simplified comparison vs absolute previous month for now
     return getPreviousMonthContents(contentData, 3); 
-  }, []);
+  }, [contentData]);
+
+  if (isLoading) return <div className="p-10 text-center text-gray-500">데이터 로딩 중...</div>;
 
   const topPerformers = getTopContents(filteredData, 3);
   const lowPerformers = getLowContents(filteredData, 3);
   
-  // Next planning hint based on the filtered data and next month's season context
-  const nextHint = getNextMonthRecommendations(seasonMap, filteredData, 3)[0];
+  const nextMonth = getNextMonthNumber(3);
+  const nextHint = getRecommendationsForMonth(filteredData, seasonMap, nextMonth, "다음 달", 1)[0];
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
@@ -58,7 +60,7 @@ export default function Dashboard() {
             <button
               key={p}
               onClick={() => setPeriod(p)}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors \${
+              className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${
                 period === p 
                   ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-100' 
                   : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'

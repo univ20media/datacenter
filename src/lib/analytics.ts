@@ -10,49 +10,86 @@ export function getPreviousMonthContents(data: ContentItem[], targetMonth: numbe
   return data.filter(item => item.month === prevMonth);
 }
 
-export function getKpiSummary(currentData: ContentItem[], previousData: ContentItem[]) {
-  const currentTotal = currentData.length;
-  const currentViews = currentTotal > 0 ? currentData.reduce((sum, item) => sum + item.views, 0) / currentTotal : 0;
-  const currentLikes = currentTotal > 0 ? currentData.reduce((sum, item) => sum + item.likes, 0) / currentTotal : 0;
-  const currentScore = currentTotal > 0 ? currentData.reduce((sum, item) => sum + item.performance_score, 0) / currentTotal : 0;
+export type KpiCardData = {
+  key: string;
+  title: string;
+  description: string;
+  value: number;
+  change: number;
+  suffix?: string;
+};
 
-  const prevTotal = previousData.length;
-  const prevViews = prevTotal > 0 ? previousData.reduce((sum, item) => sum + item.views, 0) / prevTotal : 0;
-  const prevLikes = prevTotal > 0 ? previousData.reduce((sum, item) => sum + item.likes, 0) / prevTotal : 0;
-  const prevScore = prevTotal > 0 ? previousData.reduce((sum, item) => sum + item.performance_score, 0) / prevTotal : 0;
+function safeAverage(numbers: number[]) {
+  if (numbers.length === 0) return 0;
+  return Math.round(numbers.reduce((sum, n) => sum + n, 0) / numbers.length);
+}
 
-  const calculateChange = (curr: number, prev: number) => {
-    if (prev === 0) return '+0%';
-    const change = ((curr - prev) / prev) * 100;
-    return change > 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`;
-  };
+function safeChange(current: number, previous: number) {
+  if (!Number.isFinite(current)) return 0;
+  if (!Number.isFinite(previous) || previous === 0) return 0;
+  return Number((((current - previous) / previous) * 100).toFixed(1));
+}
 
-  const calculateTrend = (curr: number, prev: number) => curr >= prev ? 'up' : 'down';
+export function buildKpiCards(
+  currentItems: ContentItem[],
+  previousItems: ContentItem[]
+): KpiCardData[] {
+  const currentTotalCount = currentItems.length;
+  const previousTotalCount = previousItems.length;
+
+  const currentAvgViews = safeAverage(
+    currentItems.map((item) => Number(item.views || 0))
+  );
+  const previousAvgViews = safeAverage(
+    previousItems.map((item) => Number(item.views || 0))
+  );
+
+  const currentAvgLikes = safeAverage(
+    currentItems
+      .filter((item) => item.platform === "인스타그램")
+      .map((item) => Number(item.likes || 0))
+  );
+  const previousAvgLikes = safeAverage(
+    previousItems
+      .filter((item) => item.platform === "인스타그램")
+      .map((item) => Number(item.likes || 0))
+  );
+
+  const currentAvgScore = safeAverage(
+    currentItems.map((item) => Number(item.performance_score || 0))
+  );
+  const previousAvgScore = safeAverage(
+    previousItems.map((item) => Number(item.performance_score || 0))
+  );
 
   return [
     {
-      label: '전체 콘텐츠',
-      value: currentTotal,
-      change: calculateChange(currentTotal, prevTotal),
-      trend: calculateTrend(currentTotal, prevTotal) as 'up' | 'down',
+      key: "totalCount",
+      title: "이번 달 발행 수",
+      description: "이번 기간 발행된 전체 콘텐츠 수",
+      value: currentTotalCount,
+      change: safeChange(currentTotalCount, previousTotalCount),
     },
     {
-      label: '평균 조회수',
-      value: Math.round(currentViews).toLocaleString(),
-      change: calculateChange(currentViews, prevViews),
-      trend: calculateTrend(currentViews, prevViews) as 'up' | 'down',
+      key: "avgViews",
+      title: "평균 조회수",
+      description: "이번 기간 콘텐츠 기준 평균 조회수",
+      value: currentAvgViews,
+      change: safeChange(currentAvgViews, previousAvgViews),
     },
     {
-      label: '평균 좋아요',
-      value: Math.round(currentLikes).toLocaleString(),
-      change: calculateChange(currentLikes, prevLikes),
-      trend: calculateTrend(currentLikes, prevLikes) as 'up' | 'down',
+      key: "avgLikes",
+      title: "평균 좋아요",
+      description: "인스타그램 콘텐츠 기준 평균 좋아요 수",
+      value: currentAvgLikes,
+      change: safeChange(currentAvgLikes, previousAvgLikes),
     },
     {
-      label: '평균 성과 점수',
-      value: Math.round(currentScore),
-      change: calculateChange(currentScore, prevScore),
-      trend: calculateTrend(currentScore, prevScore) as 'up' | 'down',
+      key: "avgScore",
+      title: "평균 성과 점수",
+      description: "내부 가중치 기준 평균 성과 점수",
+      value: currentAvgScore,
+      change: safeChange(currentAvgScore, previousAvgScore),
     },
   ];
 }

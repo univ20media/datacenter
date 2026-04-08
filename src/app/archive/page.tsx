@@ -1,50 +1,56 @@
 "use client";
 
-import { useState, useMemo } from 'react';
-import { contentData } from '@/data/content-data';
+import { useMemo, useState } from "react";
+import { sortArchiveItems, getArchiveSummary, type ArchiveSortType } from "@/lib/archive";
+import { useDataLoad } from '@/hooks/useDataLoad';
 import { codebook } from '@/data/codebook';
 
 export default function ArchivePage() {
-  const [filters, setFilters] = useState({
-    month: "전체",
-    platform: "전체",
-    topic_main: "전체",
-    format: "전체",
-    season_keyword: "전체",
-  });
+  const { contentData, isLoading } = useDataLoad();
+  
+  const [selectedMonth, setSelectedMonth] = useState("");
+  const [selectedPlatform, setSelectedPlatform] = useState("");
+  const [selectedTopic, setSelectedTopic] = useState("");
+  const [selectedFormat, setSelectedFormat] = useState("");
+  const [selectedSeasonKeyword, setSelectedSeasonKeyword] = useState("");
 
-  const [sortOrder, setSortOrder] = useState<'최신순' | '성과 높은 순'>('최신순');
+  const [sortType, setSortType] = useState<ArchiveSortType>('latest');
 
-  const handleFilterChange = (key: string, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
-  };
+  const quickFilters = ["개강", "관계", "취업", "축제", "기사", "카드뉴스"];
 
-  const applyQuickFilter = (type: string) => {
-    if (type === '이번 달') setFilters({ ...filters, month: '3' });
-    if (type === '인스타그램 릴스') setFilters({ ...filters, platform: '인스타그램', format: '릴스' });
-    if (type === '취업/자기계발') setFilters({ ...filters, topic_main: '취업' });
-  };
-
-  const processedData = useMemo(() => {
-    const result = contentData.filter(item => {
-      if (filters.month !== "전체" && item.month.toString() !== filters.month) return false;
-      if (filters.platform !== "전체" && item.platform !== filters.platform) return false;
-      if (filters.topic_main !== "전체" && item.topic_main !== filters.topic_main) return false;
-      if (filters.format !== "전체" && item.format !== filters.format) return false;
-      if (filters.season_keyword !== "전체" && item.season_keyword !== filters.season_keyword) return false;
+  const filteredContents = useMemo(() => {
+    return contentData.filter(item => {
+      if (selectedMonth !== "" && item.month.toString() !== selectedMonth) return false;
+      if (selectedPlatform !== "" && item.platform !== selectedPlatform) return false;
+      if (selectedTopic !== "" && item.topic_main !== selectedTopic) return false;
+      if (selectedFormat !== "" && item.format !== selectedFormat) return false;
+      if (selectedSeasonKeyword !== "" && item.season_keyword !== selectedSeasonKeyword) return false;
       return true;
     });
+  }, [contentData, selectedMonth, selectedPlatform, selectedTopic, selectedFormat, selectedSeasonKeyword]);
 
-    result.sort((a, b) => {
-      if (sortOrder === '성과 높은 순') {
-        return b.performance_score - a.performance_score;
-      } else {
-        return new Date(b.publish_date).getTime() - new Date(a.publish_date).getTime();
-      }
+  const sortedContents = useMemo(() => {
+    return sortArchiveItems(filteredContents, sortType);
+  }, [filteredContents, sortType]);
+
+  const summaryText = useMemo(() => {
+    return getArchiveSummary(sortedContents, {
+      month: selectedMonth === "" ? undefined : selectedMonth,
+      platform: selectedPlatform === "" ? undefined : selectedPlatform,
+      topic_main: selectedTopic === "" ? undefined : selectedTopic,
+      format: selectedFormat === "" ? undefined : selectedFormat,
+      season_keyword: selectedSeasonKeyword === "" ? undefined : selectedSeasonKeyword,
     });
+  }, [
+    sortedContents,
+    selectedMonth,
+    selectedPlatform,
+    selectedTopic,
+    selectedFormat,
+    selectedSeasonKeyword,
+  ]);
 
-    return result;
-  }, [filters, sortOrder]);
+  if (isLoading) return <div className="p-10 text-center text-gray-500">데이터 로딩 중...</div>;
 
   const months = Array.from({ length: 12 }, (_, i) => (i + 1).toString());
 
@@ -58,49 +64,93 @@ export default function ArchivePage() {
       {/* Filters */}
       <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm space-y-5">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <FilterSelect label="월 (Month)" options={months} value={filters.month} onChange={(v) => handleFilterChange("month", v)} />
-          <FilterSelect label="플랫폼" options={codebook.platforms} value={filters.platform} onChange={(v) => handleFilterChange("platform", v)} />
-          <FilterSelect label="주제 (Topic)" options={codebook.topics} value={filters.topic_main} onChange={(v) => handleFilterChange("topic_main", v)} />
-          <FilterSelect label="포맷" options={codebook.formats} value={filters.format} onChange={(v) => handleFilterChange("format", v)} />
-          <FilterSelect label="시즌 키워드" options={codebook.seasonKeywords} value={filters.season_keyword} onChange={(v) => handleFilterChange("season_keyword", v)} />
+          <FilterSelect label="월 (Month)" options={months} value={selectedMonth} onChange={setSelectedMonth} />
+          <FilterSelect label="플랫폼" options={codebook.platforms} value={selectedPlatform} onChange={setSelectedPlatform} />
+          <FilterSelect label="주제 (Topic)" options={codebook.topics} value={selectedTopic} onChange={setSelectedTopic} />
+          <FilterSelect label="포맷" options={codebook.formats} value={selectedFormat} onChange={setSelectedFormat} />
+          <FilterSelect label="시즌 키워드" options={codebook.seasonKeywords} value={selectedSeasonKeyword} onChange={setSelectedSeasonKeyword} />
         </div>
-        
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100">
-          <span className="text-xs font-semibold text-gray-500 mr-2">빠른 필터:</span>
-          <button onClick={() => applyQuickFilter('이번 달')} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-full transition-colors">이번 달 (3월)</button>
-          <button onClick={() => applyQuickFilter('인스타그램 릴스')} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-full transition-colors">인스타그램 릴스</button>
-          <button onClick={() => applyQuickFilter('취업/자기계발')} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-full transition-colors">취업 토픽</button>
+      </div>
+
+      <div className="mb-5 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-slate-500">빠른 필터</span>
+      
+          {quickFilters.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              onClick={() => {
+                if (chip === "기사" || chip === "카드뉴스") {
+                  setSelectedFormat(chip);
+                  return;
+                }
+      
+                if (chip === "개강" || chip === "축제") {
+                  setSelectedSeasonKeyword(chip);
+                  return;
+                }
+      
+                setSelectedTopic(chip);
+              }}
+              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+      
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-slate-600">{summaryText}</p>
+      
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSortType("latest")}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+                sortType === "latest"
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-100 text-slate-700"
+              }`}
+            >
+              최신순
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortType("performance")}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+                sortType === "performance"
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-100 text-slate-700"
+              }`}
+            >
+              성과 높은 순
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedMonth("");
+                setSelectedPlatform("");
+                setSelectedTopic("");
+                setSelectedFormat("");
+                setSelectedSeasonKeyword("");
+                setSortType("latest");
+              }}
+              className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700"
+            >
+              초기화
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Results */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-          <div className="flex items-center gap-4">
-            <h3 className="font-semibold text-gray-700">검색 결과 ({processedData.length}건)</h3>
-            <div className="flex items-center gap-2">
-              <select 
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as '최신순' | '성과 높은 순')}
-                className="text-xs border-gray-300 rounded px-2 py-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
-              >
-                <option value="최신순">최신순</option>
-                <option value="성과 높은 순">성과 높은 순</option>
-              </select>
-            </div>
-          </div>
-          <button 
-            onClick={() => setFilters({month: "전체", platform: "전체", topic_main: "전체", format: "전체", season_keyword: "전체"})}
-            className="text-sm text-gray-500 hover:text-blue-600 underline"
-          >
-            필터 초기화
-          </button>
-        </div>
         <div className="divide-y divide-gray-100 max-h-[800px] overflow-y-auto">
-          {processedData.length === 0 ? (
+          {sortedContents.length === 0 ? (
             <div className="p-12 text-center text-gray-500">조건에 맞는 콘텐츠가 없습니다.</div>
           ) : (
-            processedData.map(item => (
+            sortedContents.map(item => (
               <div key={item.content_id} className="p-5 hover:bg-gray-50 transition-colors flex flex-col md:flex-row gap-4 justify-between">
                 <div className="flex-1">
                   <div className="flex flex-wrap gap-2 mb-2">
@@ -153,7 +203,7 @@ function FilterSelect({ label, options, value, onChange }: { label: string, opti
         onChange={(e) => onChange(e.target.value)}
         className="w-full bg-gray-50 border border-gray-200 text-sm rounded-md px-3 py-2 text-gray-800 focus:ring-blue-500 focus:border-blue-500 outline-none"
       >
-        <option value="전체">전체</option>
+        <option value="">전체</option>
         {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
       </select>
     </div>

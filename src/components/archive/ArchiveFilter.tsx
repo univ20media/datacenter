@@ -64,7 +64,7 @@ export default function ArchiveFilter({ filters, setFilters, data }: ArchiveFilt
       </div>
     </div>
   );
-} ``
+}
 
 function FilterSelect({ label, value, options, onChange }: {
   label: string,

@@ -1,140 +1,235 @@
-import { ContentItem, SeasonItem, RecommendationItem } from '../types';
-import { getTopicPerformance, getFormatPerformance } from './analytics';
+import type { ContentItem, SeasonItem } from "@/types";
 
-export function getCurrentMonthSeason(seasonMap: SeasonItem[], month: number): SeasonItem | null {
-  return seasonMap.find((s) => s.month === month) || null;
+export type RecommendationItem = {
+  id: string;
+  topic: string;
+  platform: string;
+  format: string;
+  reason: string;
+  relatedPattern: string;
+  timing: "이번 달" | "다음 달";
+};
+
+function safeAverage(values: number[]) {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-export function getNextMonthSeason(seasonMap: SeasonItem[], month: number): SeasonItem | null {
-  const nextMonth = month === 12 ? 1 : month + 1;
-  return seasonMap.find((s) => s.month === nextMonth) || null;
+export function getCurrentMonthNumber() {
+  return new Date().getMonth() + 1;
 }
 
-export function getTopPerformingTopics(data: ContentItem[], count: number = 2) {
-  const topics = getTopicPerformance(data);
-  return topics.slice(0, count).map(t => t[0]);
+export function getNextMonthNumber(month: number) {
+  return month === 12 ? 1 : month + 1;
 }
 
-export function getTopPerformingFormats(data: ContentItem[], count: number = 2) {
-  const formats = getFormatPerformance(data);
-  return formats.slice(0, count).map(f => f[0]);
+export function getSeasonByMonth(seasonData: SeasonItem[], month: number) {
+  return seasonData.find((season) => Number(season.month) === Number(month)) || null;
 }
 
-export function getContentGapAreas(data: ContentItem[], allTopics: string[]) {
-  const coveredTopics = new Set(data.map(d => d.topic_main));
-  return allTopics.filter(t => !coveredTopics.has(t));
-}
-
-/// Simple, transparent, deterministic rule-based logic
-export function getCurrentMonthRecommendations(
-  seasonMap: SeasonItem[],
+export function getTopPerformingTopics(
   contentData: ContentItem[],
+  month: number,
+  limit = 3
+) {
+  const monthlyItems = contentData.filter(
+    (item) => Number(item.month) === Number(month)
+  );
+
+  const topicMap = new Map<
+    string,
+    { totalScore: number; count: number; avgScore: number }
+  >();
+
+  monthlyItems.forEach((item) => {
+    const topic = item.topic_main?.trim();
+    if (!topic) return;
+
+    const current = topicMap.get(topic) || {
+      totalScore: 0,
+      count: 0,
+      avgScore: 0,
+    };
+
+    current.totalScore += Number(item.performance_score || 0);
+    current.count += 1;
+    current.avgScore = current.totalScore / current.count;
+
+    topicMap.set(topic, current);
+  });
+
+  return [...topicMap.entries()]
+    .map(([topic, value]) => ({
+      topic,
+      avgScore: value.avgScore,
+      count: value.count,
+    }))
+    .sort((a, b) => b.avgScore - a.avgScore)
+    .slice(0, limit);
+}
+
+export function getTopPerformingFormats(
+  contentData: ContentItem[],
+  month: number,
+  limit = 3
+) {
+  const monthlyItems = contentData.filter(
+    (item) => Number(item.month) === Number(month)
+  );
+
+  const formatMap = new Map<
+    string,
+    { totalScore: number; count: number; avgScore: number }
+  >();
+
+  monthlyItems.forEach((item) => {
+    const format = item.format?.trim();
+    if (!format) return;
+
+    const current = formatMap.get(format) || {
+      totalScore: 0,
+      count: 0,
+      avgScore: 0,
+    };
+
+    current.totalScore += Number(item.performance_score || 0);
+    current.count += 1;
+    current.avgScore = current.totalScore / current.count;
+
+    formatMap.set(format, current);
+  });
+
+  return [...formatMap.entries()]
+    .map(([format, value]) => ({
+      format,
+      avgScore: value.avgScore,
+      count: value.count,
+    }))
+    .sort((a, b) => b.avgScore - a.avgScore)
+    .slice(0, limit);
+}
+
+function getBestPlatformForTopic(contentData: ContentItem[], topic: string, month: number) {
+  const topicItems = contentData.filter(
+    (item) =>
+      Number(item.month) === Number(month) &&
+      item.topic_main?.trim() === topic
+  );
+
+  const homepageItems = topicItems.filter((item) => item.platform === "홈페이지");
+  const instagramItems = topicItems.filter((item) => item.platform === "인스타그램");
+
+  const homepageAvg = safeAverage(
+    homepageItems.map((item) => Number(item.performance_score || 0))
+  );
+  const instagramAvg = safeAverage(
+    instagramItems.map((item) => Number(item.performance_score || 0))
+  );
+
+  return instagramAvg >= homepageAvg ? "인스타그램" : "홈페이지";
+}
+
+function getBestFormatForMonth(contentData: ContentItem[], month: number, fallback = "기사") {
+  const topFormats = getTopPerformingFormats(contentData, month, 1);
+  return topFormats[0]?.format || fallback;
+}
+
+function buildRecommendationReason(
+  topic: string,
+  selectedSeason: SeasonItem,
+  topTopics: { topic: string; avgScore: number; count: number }[],
+  topFormats: { format: string; avgScore: number; count: number }[],
+  timing: "이번 달" | "다음 달"
+) {
+  const matchingTopTopic = topTopics.find((item) => item.topic === topic);
+  const bestFormat = topFormats[0]?.format || "기사";
+
+  if (timing === "이번 달") {
+    if (matchingTopTopic) {
+      return `${selectedSeason.month}월 시즌 이슈와 맞고, 최근 '${topic}' 주제가 실제 성과에서도 강하게 반응했습니다. '${bestFormat}' 포맷과 함께 우선 검토할 만합니다.`;
+    }
+
+    return `${selectedSeason.month}월 시즌 키워드와 직접 연결되는 주제입니다. 현재 시즌성 적합도가 높아 지금 시점에 바로 시도할 가치가 있습니다.`;
+  }
+
+  if (matchingTopTopic) {
+    return `다음 달 시즌 이슈를 고려하면 지금부터 선기획이 필요한 주제입니다. 최근 '${topic}' 관련 반응도 안정적이라 미리 준비할 이유가 충분합니다.`;
+  }
+
+  return `다음 달 시즌 이슈 대비용으로 지금부터 준비가 필요한 주제입니다. 시즌 적합도가 높아 선기획 대상으로 보기 좋습니다.`;
+}
+
+function buildRelatedPattern(
+  topic: string,
+  platform: string,
+  format: string,
   month: number
+) {
+  return `${month}월 기준 '${topic}' 관련 흐름과 '${platform}'의 '${format}' 포맷 반응을 함께 참고한 추천입니다.`;
+}
+
+function uniqueArray(values: string[]) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+export function getRecommendationsForMonth(
+  contentData: ContentItem[],
+  seasonData: SeasonItem[],
+  month: number,
+  timing: "이번 달" | "다음 달",
+  limit = 3
 ): RecommendationItem[] {
-  const season = getCurrentMonthSeason(seasonMap, month);
+  const season = getSeasonByMonth(seasonData, month);
   if (!season) return [];
 
-  const topTopics = getTopPerformingTopics(contentData);
-  const topFormats = getTopPerformingFormats(contentData);
+  const topTopics = getTopPerformingTopics(contentData, month, 5);
+  const topFormats = getTopPerformingFormats(contentData, month, 3);
 
-  const recommendations: RecommendationItem[] = [];
+  const seasonTopics = season.recommended_topics || [];
+  const mergedTopics = uniqueArray([
+    ...seasonTopics,
+    ...topTopics.map((item) => item.topic),
+  ]).slice(0, limit);
 
-  // Rule 1: Combine Season Map Recommended Topic with Top Format
-  if (season.recommended_topics.length > 0 && topFormats.length > 0) {
-    recommendations.push({
-      id: `cur-rec-1`,
-      topic: season.recommended_topics[0],
-      platform: '인스타그램',
-      format: topFormats[0],
-      reason: `시즌 맵 추천 토픽('${season.recommended_topics[0]}')과 현재 가장 성과가 좋은 포맷('${topFormats[0]}')의 결합입니다.`,
-      relatedPattern: season.behavior_pattern.length > 0 ? season.behavior_pattern[0] : '트렌드 지속',
-      timing: "이번 달",
-      strength: "강력 추천"
-    });
-  }
+  return mergedTopics.map((topic, index) => {
+    const platform = getBestPlatformForTopic(contentData, topic, month);
+    const format =
+      platform === "인스타그램"
+        ? topFormats.find((item) =>
+            ["카드뉴스", "피드", "릴스"].includes(item.format)
+          )?.format || "카드뉴스"
+        : topFormats.find((item) =>
+            ["기사", "인터뷰"].includes(item.format)
+          )?.format || getBestFormatForMonth(contentData, month, "기사");
 
-  // Rule 2: Combine Top Performing Topic from existing data with Season recommended Format
-  if (topTopics.length > 0 && season.recommended_formats.length > 0) {
-    recommendations.push({
-      id: `cur-rec-2`,
-      topic: topTopics[0],
-      platform: '홈페이지',
-      format: season.recommended_formats[0],
-      reason: `현재 독자 반응이 가장 뜨거운 토픽('${topTopics[0]}')을 타겟팅한 시즌 추천 포맷('${season.recommended_formats[0]}')입니다.`,
-      relatedPattern: season.behavior_pattern.length > 1 ? season.behavior_pattern[1] : '관심사 확대',
-      timing: "이번 달",
-      strength: "시도해볼 만함"
-    });
-  }
-
-  // Rule 3: Past success / Linked topics
-  if (season.linked_past_topics.length > 0) {
-    recommendations.push({
-      id: `cur-rec-3`,
-      topic: season.linked_past_topics[0],
-      platform: '홈페이지',
-      format: '기사',
-      reason: `과거 성공적이었던 연관 토픽('${season.linked_past_topics[0]}')을 심도있게 다루는 기사 형태의 접근이 필요합니다.`,
-      relatedPattern: '과거 데이터 기반 재활용',
-      timing: "이번 달",
-      strength: "시도해볼 만함"
-    });
-  }
-
-  return recommendations;
+    return {
+      id: `${timing}-${month}-${index}-${topic}`,
+      topic,
+      platform,
+      format,
+      reason: buildRecommendationReason(topic, season, topTopics, topFormats, timing),
+      relatedPattern: buildRelatedPattern(topic, platform, format, month),
+      timing,
+    };
+  });
 }
 
-export function getNextMonthRecommendations(
-  seasonMap: SeasonItem[],
+export function getContentGapAreas(
   contentData: ContentItem[],
-  month: number
-): RecommendationItem[] {
-  const nextSeason = getNextMonthSeason(seasonMap, month);
-  if (!nextSeason) return [];
+  seasonData: SeasonItem[],
+  month: number,
+  limit = 3
+) {
+  const season = getSeasonByMonth(seasonData, month);
+  if (!season) return [];
 
-  // Use current month data to predict what should act as a bridge
-  const topTopics = getTopPerformingTopics(contentData);
+  const monthlyItems = contentData.filter(
+    (item) => Number(item.month) === Number(month)
+  );
 
-  const recommendations: RecommendationItem[] = [];
+  const publishedTopics = new Set(monthlyItems.map((item) => item.topic_main).filter(Boolean));
 
-  if (nextSeason.recommended_topics.length > 0) {
-    recommendations.push({
-      id: `nxt-rec-1`,
-      topic: nextSeason.recommended_topics[0],
-      platform: '인스타그램',
-      format: nextSeason.recommended_formats[0] || '카드뉴스',
-      reason: `다음 달 핵심 이슈('${nextSeason.issue_name}') 대비를 위한 선제적 콘텐츠 발행이 필요합니다.`,
-      relatedPattern: nextSeason.behavior_pattern.length > 0 ? nextSeason.behavior_pattern[0] : '이슈 선점',
-      timing: "다음 달",
-      strength: "선기획 권장"
-    });
-  }
-
-  if (topTopics.length > 0 && nextSeason.recommended_topics.length > 1) {
-    recommendations.push({
-      id: `nxt-rec-2`,
-      topic: nextSeason.recommended_topics[1],
-      platform: '인스타그램',
-      format: '릴스', // arbitrary format selection from rules
-      reason: `현재 트렌드에서 이어지는 다음 달 타겟 관심사('${nextSeason.recommended_topics[1]}') 공략 콘텐츠입니다.`,
-      relatedPattern: '트렌드 연결',
-      timing: "다음 달",
-      strength: "시도해볼 만함"
-    });
-  }
-
-  if (nextSeason.prep_start) {
-    recommendations.push({
-      id: `nxt-rec-3`,
-      topic: '시즌 준비 가이드',
-      platform: '홈페이지',
-      format: '기사',
-      reason: `다음 달 시즌 준비('${nextSeason.prep_start}' 시작)를 위한 실용적인 가이드 콘텐츠 시점입니다.`,
-      relatedPattern: '사전 준비',
-      timing: "다음 달",
-      strength: "선기획 권장"
-    });
-  }
-
-  return recommendations;
+  return (season.recommended_topics || [])
+    .filter((topic) => !publishedTopics.has(topic))
+    .slice(0, limit);
 }

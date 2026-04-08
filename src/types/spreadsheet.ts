@@ -1,0 +1,42 @@
+export type RawContentRow = {
+  content_id?: string;
+  publish_date?: string;
+  month?: string | number;
+  platform?: string;
+  title?: string;
+  url?: string;
+  editor?: string;
+  topic_main?: string;
+  topic_sub?: string;
+  season_keyword?: string;
+  target?: string;
+  format?: string;
+  tone?: string;
+  cta_type?: string;
+  publish_time?: string;
+  views?: string | number;
+  likes?: string | number;
+  comments?: string | number;
+  saves?: string | number;
+  shares?: string | number;
+  measure_point?: string;
+  performance_score?: string | number;
+  performance_level?: string;
+  review_note?: string;
+};
+
+export type RawSeasonRow = {
+  season_id?: string;
+  month?: string | number;
+  issue_name?: string;
+  academic_event?: string;
+  life_event?: string;
+  emotion_keywords?: string;
+  concern_keywords?: string;
+  behavior_pattern?: string;
+  recommended_topics?: string;
+  recommended_formats?: string;
+  prep_start?: string;
+  caution_note?: string;
+  linked_past_topics?: string;
+};
